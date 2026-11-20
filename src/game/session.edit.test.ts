@@ -4,9 +4,9 @@ import { ShelfManager } from "../shelves/shelfManager";
 import { World } from "../world/world";
 import { GameSession } from "./session";
 
-function openRow(world: World, row: number) {
+function openBox(world: World, row: number, col: number) {
   const m = new ShelfManager(world.rows, world.cols);
-  m.pull("horizontal", row);
+  m.pull("horizontal", row, col);
   m.update(SHELF_ANIMATION_MS);
   return m;
 }
@@ -14,7 +14,7 @@ function openRow(world: World, row: number) {
 describe("board editing", () => {
   it("painting is free and clears the history", () => {
     const session = new GameSession(World.predefined4x2());
-    const shelves = openRow(session.world, 0);
+    const shelves = openBox(session.world, 0, 0);
     expect(session.apply({ kind: "topDown", row: 0, col: 0 }, shelves).ok).toBe(true);
     expect(session.totalCost).toBe(5);
 

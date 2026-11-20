@@ -6,16 +6,21 @@ export const SHELF_ANIMATION_MS = 400;
 /**
  * One shelf. progress 0 = in place, progress 1 = fully pulled out.
  * A shelf knows nothing about the other shelves, so shelves can never lock each other.
+ *
+ * Horizontal shelves are the floor of one box, at (row, col).
+ * Vertical shelves are the wall between (row, col) and (row, col + 1).
  */
 export class Shelf {
   readonly orientation: Orientation;
-  readonly index: number;
+  readonly row: number;
+  readonly col: number;
   private _phase: ShelfPhase = "closed";
   private _progress = 0;
 
-  constructor(orientation: Orientation, index: number) {
+  constructor(orientation: Orientation, row: number, col: number) {
     this.orientation = orientation;
-    this.index = index;
+    this.row = row;
+    this.col = col;
   }
 
   get phase(): ShelfPhase {

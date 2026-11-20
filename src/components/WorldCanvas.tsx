@@ -20,10 +20,6 @@ interface Props {
   shelves?: ShelfManager;
   version?: number;
   onPaint?: (row: number, col: number) => void;
-  onSelect?: (row: number, col: number) => void;
-  selRow?: number;
-  selCol?: number;
-  gate?: "topDown" | "sideGate";
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -36,9 +32,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export function WorldCanvas({
-  world, shelves, version = 0, onPaint, onSelect, selRow, selCol, gate,
-}: Props) {
+export function WorldCanvas({ world, shelves, version = 0, onPaint }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const painting = useRef(false);
   const [hover, setHover] = useState<{ row: number; col: number } | null>(null);
@@ -90,76 +84,32 @@ export function WorldCanvas({
           ctx.restore();
         }
 
-        const isSel = selRow === r && selCol === c;
         const isHover = hover?.row === r && hover?.col === c;
         roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 7);
-        if (isSel) {
-          ctx.strokeStyle = "#38bdf8";
-          ctx.lineWidth = 3;
-        } else if (isHover) {
-          ctx.strokeStyle = "rgba(56,189,248,0.45)";
-          ctx.lineWidth = 2;
-        } else {
-          ctx.strokeStyle = "#334155";
-          ctx.lineWidth = 1;
-        }
+        ctx.strokeStyle = isHover ? "rgba(56,189,248,0.55)" : "#334155";
+        ctx.lineWidth = isHover ? 2 : 1;
         ctx.stroke();
       }
     }
 
-    // Gate direction arrow on the selected cell
-    if (selRow !== undefined && selCol !== undefined && gate) {
-      const cx = selCol * CELL + CELL / 2;
-      const cy = selRow * CELL + CELL / 2;
-      ctx.save();
-      ctx.fillStyle = "rgba(11,18,32,0.72)";
-      ctx.beginPath();
-      ctx.arc(cx, cy, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#38bdf8";
-      ctx.fillStyle = "#38bdf8";
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      if (gate === "topDown") {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - 9);
-        ctx.lineTo(cx, cy + 4);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - 6, cy + 1);
-        ctx.lineTo(cx, cy + 9);
-        ctx.lineTo(cx + 6, cy + 1);
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(cx - 9, cy);
-        ctx.lineTo(cx + 4, cy);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx + 1, cy - 6);
-        ctx.lineTo(cx + 9, cy);
-        ctx.lineTo(cx + 1, cy + 6);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
-    // Shelves
+    // Per-box horizontal shelves (floors) and per-gap vertical shelves (walls).
     if (shelves) {
       ctx.fillStyle = "rgba(56,189,248,0.85)";
       for (const shelf of shelves.horizontal) {
-        const x0 = shelf.progress * width;
-        ctx.fillRect(x0, (shelf.index + 1) * CELL - BAR, width - x0, BAR);
+        const x = shelf.col * CELL;
+        const y = (shelf.row + 1) * CELL - BAR;
+        const w = CELL * (1 - shelf.progress);
+        if (w > 0) ctx.fillRect(x, y, w, BAR);
       }
       ctx.fillStyle = "rgba(244,114,182,0.85)";
       for (const shelf of shelves.vertical) {
-        const y0 = shelf.progress * height;
-        ctx.fillRect((shelf.index + 1) * CELL - BAR, y0, BAR, height - y0);
+        const x = (shelf.col + 1) * CELL - BAR;
+        const y = shelf.row * CELL;
+        const h = CELL * (1 - shelf.progress);
+        if (h > 0) ctx.fillRect(x, y, BAR, h);
       }
     }
-  }, [world, shelves, version, selRow, selCol, gate, hover]);
+  }, [world, shelves, version, hover]);
 
   const cellAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = ref.current;
@@ -175,14 +125,10 @@ export function WorldCanvas({
   };
 
   const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!onPaint) return;
+    painting.current = true;
     const cell = cellAt(e);
-    if (!cell) return;
-    if (onPaint) {
-      painting.current = true;
-      onPaint(cell.row, cell.col);
-    } else if (onSelect) {
-      onSelect(cell.row, cell.col);
-    }
+    if (cell) onPaint(cell.row, cell.col);
   };
   const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cell = cellAt(e);
@@ -195,8 +141,6 @@ export function WorldCanvas({
     setHover(null);
   };
 
-  const cursor = onPaint ? "crosshair" : onSelect ? "pointer" : "default";
-
   return (
     <canvas
       ref={ref}
@@ -207,7 +151,7 @@ export function WorldCanvas({
       onPointerUp={() => (painting.current = false)}
       onPointerLeave={leave}
       className="board-canvas"
-      style={{ maxWidth: "100%", cursor, touchAction: "none" }}
+      style={{ maxWidth: "100%", cursor: onPaint ? "crosshair" : "default", touchAction: "none" }}
     />
   );
 }

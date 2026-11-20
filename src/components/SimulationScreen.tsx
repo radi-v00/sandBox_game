@@ -4,8 +4,9 @@ import { World as WorldClass } from "../world/world";
 import type { BoxKind } from "../world/box";
 import { ShelfManager, type ShelfPolicies } from "../shelves/shelfManager";
 import type { Orientation } from "../shelves/shelf";
-import { GATE_LABELS, GameSession } from "../game/session";
+import { GameSession } from "../game/session";
 import type { GateKind } from "../rules/assumptions";
+import { applyGate } from "../world/transitions";
 import { worldKey } from "../planning/state";
 import { ParticleEngine } from "../physics/particleEngine";
 import { particleCount, particleOf } from "../physics/materials";
@@ -32,14 +33,11 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState("");
   const [msgKind, setMsgKind] = useState<"info" | "error" | "success">("info");
-  const [selRow, setSelRow] = useState(0);
-  const [selCol, setSelCol] = useState(0);
   const [preview, setPreview] = useState<World | null>(null);
   const [brush, setBrush] = useState<BoxKind | null>(null);
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [useParticles, setUseParticles] = useState(false);
-  const [gate, setGate] = useState<GateKind>("topDown");
   const skipNextLoad = useRef(false);
 
   const world = session.world;
@@ -93,7 +91,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     if (brush === null) return;
     try {
       session.paint(row, col, brush);
-      say(`Painted ${brush} at (${row + 1}, ${col + 1}). History cleared.`, "info");
+      say("Painted " + brush + " at (" + (row + 1) + ", " + (col + 1) + "). History cleared.", "info");
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), "error");
     }
@@ -109,7 +107,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     manager.reset();
     engine.reset();
     setBrush(null);
-    say(`Randomized board (seed ${seed}).`, "info");
+    say("Randomized board (seed " + seed + ").", "info");
     bump();
   };
 
@@ -121,64 +119,69 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     bump();
   };
 
-  const pull = (o: Orientation, i: number) => {
-    say(manager.pull(o, i).reason, "info");
-    bump();
-  };
-  const giveBack = (o: Orientation, i: number) => {
-    const result = manager.requestReturn(o, i, session.world);
-    say(result.reason, result.ok ? "info" : "error");
-    bump();
-  };
+  const pull = (o: Orientation, r: number, c: number) => {
+    if (preview) { say("Close the preview before acting.", "error"); return; }
+    const kind: GateKind = o === "horizontal" ? "topDown" : "sideGate";
 
-  const run = (kind: GateKind) => {
-    const before = session.world.clone();
-    const result = session.apply({ kind, row: selRow, col: selCol }, manager);
+    // 1) Would the gate actually do anything?
+    const check = applyGate(session.world, { kind, row: r, col: c });
+    if (!check.ok) { say(check.reason, "error"); return; }
+    if (check.outcome.moved === 0) {
+      say(check.outcome.description || "Nothing would move.", "info");
+      return;
+    }
+
+    // 2) Open the shelf (this is what makes session.apply accept the action).
+    const pulled = manager.pull(o, r, c);
+    if (!pulled.ok) { say(pulled.reason, "error"); bump(); return; }
+
+    // 3) Run the gate: one action, cost = action cost + concrete penalty.
+    const sourceKindBefore = session.world.getBox(r, c);
+    const result = session.apply({ kind, row: r, col: c }, manager);
     say(result.reason, result.ok ? "success" : "error");
+
+    // 4) Particle playback.
     if (result.ok && useParticles && !preview) {
-      const sourceKind = before.getBox(selRow, selCol);
-      const id = particleOf(sourceKind);
-      const afterKind = session.world.getBox(selRow, selCol);
+      const id = particleOf(sourceKindBefore);
+      const afterKind = session.world.getBox(r, c);
       const movedParticles =
-        particleCount(sourceKind, engine.particlesPerBox) - particleCount(afterKind, engine.particlesPerBox);
+        particleCount(sourceKindBefore, engine.particlesPerBox) -
+        particleCount(afterKind, engine.particlesPerBox);
       const target =
         kind === "topDown"
-          ? selRow + 1 < world.rows
-            ? { row: selRow + 1, col: selCol }
+          ? r + 1 < session.world.rows
+            ? { row: r + 1, col: c }
             : null
-          : { row: selRow, col: selCol + 1 < world.cols ? selCol + 1 : selCol };
+          : { row: r, col: c + 1 };
       const concreteFormed = session.history.at(-1)?.newConcrete.length ?? 0;
       if (concreteFormed === 0 && id !== 0 && movedParticles > 0) {
-        engine.playPour({ source: { row: selRow, col: selCol }, target, id, count: movedParticles });
-        skipNextLoad.current = true; // keep the pour alive
+        engine.playPour({ source: { row: r, col: c }, target, id, count: movedParticles });
+        skipNextLoad.current = true;
       }
     }
     bump();
   };
 
-  const select = (value: number, setter: (n: number) => void, count: number) => (
-    <select className="select" value={value} onChange={(e) => setter(Number(e.target.value))}>
-      {Array.from({ length: count }, (_, i) => (
-        <option key={i} value={i}>{i + 1}</option>
-      ))}
-    </select>
-  );
+  const giveBack = (o: Orientation, r: number, c: number) => {
+    const result = manager.requestReturn(o, r, c, session.world);
+    say(result.reason, result.ok ? "info" : "error");
+    bump();
+  };
 
   const brushes: { label: string; kind: BoxKind | null }[] = [
     { label: "Off", kind: null },
     { label: "Eraser", kind: "empty" },
-    { label: "Â½ sand", kind: "halfSand" },
+    { label: "\u00bd sand", kind: "halfSand" },
     { label: "Full sand", kind: "fullSand" },
     ...(modeB ? [{ label: "Water", kind: "fullWater" as BoxKind }] : []),
   ];
 
   return (
     <div>
-      {/* Stats bar */}
       <div className="stats">
         <div className="stat">
           <div className="stat-label">Board</div>
-          <div className="stat-value">{world.mode} Â· {world.rows}Ã—{world.cols}</div>
+          <div className="stat-value">{world.mode} \u00b7 {world.rows}\u00d7{world.cols}</div>
         </div>
         <div className="stat">
           <div className="stat-label">Remaining sand</div>
@@ -216,7 +219,6 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
         </div>
       </div>
 
-      {/* Board + shelves */}
       <div className="layout">
         <div className="card">
           <div className="card-title">Board</div>
@@ -229,27 +231,23 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
                 shelves={preview ? undefined : manager}
                 version={version}
                 onPaint={preview || brush === null ? undefined : paint}
-                onSelect={preview ? undefined : (r, c) => { setSelRow(r); setSelCol(c); }}
-                selRow={preview ? undefined : selRow}
-                selCol={preview ? undefined : selCol}
-                gate={preview ? undefined : gate}
               />
             )}
           </div>
           {preview && (
             <div className="message is-success" style={{ marginTop: 10 }}>
-              Previewing a solution step â€” the game state is unchanged.
+              Previewing a solution step \u2014 the game state is unchanged.
             </div>
           )}
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button className="btn btn-sm" onClick={() => setPaused((p) => !p)}>
-              {paused ? "â–¶ Resume" : "â¸ Pause"}
+              {paused ? "\u25b6 Resume" : "\u23f8 Pause"}
             </button>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
               Speed
               <input type="range" min={0.25} max={4} step={0.25} value={speed}
                 onChange={(e) => setSpeed(Number(e.target.value))} />
-              <span style={{ minWidth: 32 }}>{speed.toFixed(2)}Ã—</span>
+              <span style={{ minWidth: 32 }}>{speed.toFixed(2)}\u00d7</span>
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginLeft: "auto" }}>
               <input type="checkbox" checked={useParticles} onChange={(e) => setUseParticles(e.target.checked)} />
@@ -259,74 +257,41 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
         </div>
 
         <div className="card">
-          <div className="card-title">Shelves</div>
+          <div className="card-title">Shelves \u00b7 pull to act</div>
           <ShelfControls manager={manager} version={version} onPull={pull} onReturn={giveBack} />
         </div>
       </div>
 
-      {/* Board tools + gate ops side by side */}
-      <div className="two-col">
-        <div className="card">
-          <div className="card-title">Board tools</div>
-          <div className="row" style={{ gap: 6 }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Brush</span>
-            {brushes.map((b) => (
-              <button
-                key={b.label}
-                className={"btn btn-sm" + (brush === b.kind ? " is-active" : "")}
-                onClick={() => setBrush(b.kind)}
-              >
-                {b.label}
-              </button>
-            ))}
-            <span style={{ flex: 1 }} />
-            <button className="btn btn-sm" onClick={randomize}>ðŸŽ² Randomize</button>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "8px 0 0" }}>
-            With a brush selected, click or drag on the board to paint. Editing is free and clears history.
-          </p>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">Board tools</div>
+        <div className="row" style={{ gap: 6 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Brush</span>
+          {brushes.map((b) => (
+            <button
+              key={b.label}
+              className={"btn btn-sm " + (brush === b.kind ? "is-active" : "")}
+              onClick={() => setBrush(b.kind)}
+            >
+              {b.label}
+            </button>
+          ))}
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-sm" onClick={randomize}>\ud83c\udfb2 Randomize</button>
         </div>
-
-        <div className="card">
-          <div className="card-title">Gate operations</div>
-          <div className="row" style={{ gap: 10 }}>
-            <div className="field">
-              <label className="field-label">Row</label>
-              {select(selRow, setSelRow, world.rows)}
-            </div>
-            <div className="field">
-              <label className="field-label">Column</label>
-              {select(selCol, setSelCol, world.cols)}
-            </div>
-            <div style={{ flex: 1 }} />
-            <div className="segmented">
-              <button className={gate === "topDown" ? "is-active" : ""}
-                onClick={() => setGate("topDown")}>
-                A Â· Top-Down
-              </button>
-              <button className={gate === "sideGate" ? "is-active" : ""}
-                onClick={() => setGate("sideGate")}>
-                B Â· Side Gate
-              </button>
-            </div>
-            <button className="btn btn-primary" onClick={() => run(gate)}>Run</button>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "8px 0 0" }}>
-            A needs the row shelf fully pulled out. B needs the column shelf fully pulled out.
-            Click a box on the board to select it.
-          </p>
-        </div>
+        <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "8px 0 0" }}>
+          With a brush selected, click or drag on the board to paint. Editing is free and clears history.
+        </p>
       </div>
 
       {goal && (
         <div className="message is-success" style={{ marginTop: 12 }}>
-          ðŸŽ‰ Goal reached â€” no sand left. Total cost: {session.totalCost}.
+          \ud83c\udf89 Goal reached \u2014 no sand left. Total cost: {session.totalCost}.
         </div>
       )}
 
       {message && (
         <div
-          className={"message" + (msgKind === "error" ? " is-error" : msgKind === "success" ? " is-success" : "")}
+          className={"message " + (msgKind === "error" ? "is-error" : msgKind === "success" ? "is-success" : "")}
           style={{ marginTop: 12 }}
         >
           {message}
@@ -343,9 +308,9 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
       </div>
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn" onClick={reset}>â†º Reset</button>
-        <button className="btn" onClick={onLoadExample}>Load predefined 4Ã—2</button>
-        <button className="btn btn-ghost" onClick={onBack}>â† Back to configuration</button>
+        <button className="btn" onClick={reset}>\u21ba Reset</button>
+        <button className="btn" onClick={onLoadExample}>Load predefined 4\u00d72</button>
+        <button className="btn btn-ghost" onClick={onBack}>\u2190 Back to configuration</button>
       </div>
     </div>
   );

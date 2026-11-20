@@ -1,4 +1,3 @@
-import { precedingLine } from "../rules/assumptions";
 import { materialOf } from "../world/box";
 import type { World } from "../world/world";
 import type { Orientation } from "./shelf";
@@ -13,36 +12,48 @@ export interface ReturnCheck {
 }
 
 /** A box blocks the return only when it holds movable material. Concrete is permanent and never blocks. */
-function lineHasMaterial(world: World, orientation: Orientation, line: number): boolean {
-  if (orientation === "horizontal") {
-    for (let c = 0; c < world.cols; c++) if (materialOf(world.getBox(line, c)) !== null) return true;
-  } else {
-    for (let r = 0; r < world.rows; r++) if (materialOf(world.getBox(r, line)) !== null) return true;
-  }
-  return false;
+function boxHasMaterial(world: World, row: number, col: number): boolean {
+  if (row < 0 || row >= world.rows || col < 0 || col >= world.cols) return false;
+  return materialOf(world.getBox(row, col)) !== null;
 }
 
 /**
  * Decides whether a shelf may return.
- * returnWhenClear: horizontal shelf in row r needs row r-1 clear; vertical shelf in column c needs column c-1 clear.
- * Row 0 and column 0 are always clear.
+ *
+ * returnWhenClear:
+ *   Horizontal shelf at (r, c): needs box (r - 1, c) clear. Row 0 is always clear.
+ *   Vertical shelf at (r, c): always clear (a vertical shelf closes with no content check).
+ *
+ * neverAllow / alwaysAllow ignore the world.
+ * Concrete never blocks, because materialOf returns null for it.
  */
 export function checkReturn(
   orientation: Orientation,
-  index: number,
+  row: number,
+  col: number,
   policy: ReturnPolicy,
   world: World,
 ): ReturnCheck {
-  const label = orientation === "horizontal" ? `Row ${index + 1} shelf` : `Column ${index + 1} shelf`;
-  const lineName = orientation === "horizontal" ? "row" : "column";
+  const label =
+    orientation === "horizontal"
+      ? "Horizontal shelf at box (" + (row + 1) + ", " + (col + 1) + ")"
+      : "Vertical shelf between (" + (row + 1) + ", " + (col + 1) + ") and (" + (row + 1) + ", " + (col + 2) + ")";
 
-  if (policy === "alwaysAllow") return { allowed: true, reason: `${label} may return (policy: always allow).` };
-  if (policy === "neverAllow") return { allowed: false, reason: `${label} cannot return (policy: never allow).` };
+  if (policy === "alwaysAllow") return { allowed: true, reason: label + " may return (policy: always allow)." };
+  if (policy === "neverAllow") return { allowed: false, reason: label + " cannot return (policy: never allow)." };
 
-  const prev = precedingLine(index);
-  if (prev === null) return { allowed: true, reason: `${label} may return (first ${lineName} is considered clear).` };
-  if (lineHasMaterial(world, orientation, prev)) {
-    return { allowed: false, reason: `${label} cannot return: ${lineName} ${prev + 1} still contains material.` };
+  // returnWhenClear
+  if (orientation === "vertical") {
+    return { allowed: true, reason: label + " may return (vertical shelves always return)." };
   }
-  return { allowed: true, reason: `${label} may return (${lineName} ${prev + 1} is clear).` };
+  if (row === 0) {
+    return { allowed: true, reason: label + " may return (top row is always clear)." };
+  }
+  if (boxHasMaterial(world, row - 1, col)) {
+    return {
+      allowed: false,
+      reason: label + " cannot return: box (" + row + ", " + (col + 1) + ") still contains material.",
+    };
+  }
+  return { allowed: true, reason: label + " may return (box above is clear)." };
 }

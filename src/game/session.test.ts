@@ -4,10 +4,10 @@ import { ShelfManager } from "../shelves/shelfManager";
 import { World } from "../world/world";
 import { GameSession } from "./session";
 
-function openShelves(world: World, horizontal: number[], vertical: number[]) {
+function openShelves(world: World, boxes: [number, number][], gaps: [number, number][]) {
   const m = new ShelfManager(world.rows, world.cols);
-  horizontal.forEach((i) => m.pull("horizontal", i));
-  vertical.forEach((i) => m.pull("vertical", i));
+  boxes.forEach(([r, c]) => m.pull("horizontal", r, c));
+  gaps.forEach(([r, c]) => m.pull("vertical", r, c));
   m.update(SHELF_ANIMATION_MS);
   return m;
 }
@@ -24,7 +24,7 @@ describe("GameSession", () => {
 
   it("accumulates cost and stores s and s' in the history", () => {
     const s = new GameSession(World.predefined4x2());
-    const m = openShelves(s.world, [0, 1], [0]);
+    const m = openShelves(s.world, [[0, 0], [1, 1]], [[1, 0]]);
     expect(s.apply({ kind: "topDown", row: 0, col: 0 }, m).ok).toBe(true); // 5
     expect(s.apply({ kind: "sideGate", row: 1, col: 0 }, m).ok).toBe(true); // 1 (target full, nothing moves)
     expect(s.apply({ kind: "topDown", row: 1, col: 1 }, m).ok).toBe(true); // 1 + 4*(1+1) = 9
@@ -37,7 +37,7 @@ describe("GameSession", () => {
 
   it("reset restores the initial world and clears the history", () => {
     const s = new GameSession(World.predefined4x2());
-    const m = openShelves(s.world, [0], []);
+    const m = openShelves(s.world, [[0, 0]], []);
     s.apply({ kind: "topDown", row: 0, col: 0 }, m);
     s.reset();
     expect(s.totalCost).toBe(0);

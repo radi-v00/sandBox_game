@@ -66,8 +66,16 @@ export function isMovable(kind: BoxKind): boolean {
 
 /** O9. Which shelf must be fully pulled out before a gate operation can run. */
 export type GateKind = "topDown" | "sideGate";
-export function requiredShelf(kind: GateKind, row: number, col: number): { orientation: Orientation; index: number } {
-  return kind === "topDown" ? { orientation: "horizontal", index: row } : { orientation: "vertical", index: col };
+export function requiredShelf(
+  kind: GateKind,
+  row: number,
+  col: number,
+): { orientation: Orientation; row: number; col: number } {
+  // Horizontal shelves are the floor of one box, at (row, col).
+  // Vertical shelves are the wall between (row, col) and (row, col + 1), so col must be < cols - 1.
+  return kind === "topDown"
+    ? { orientation: "horizontal", row, col }
+    : { orientation: "vertical", row, col };
 }
 
 /** O11. Water cannot be split, so it never moves sideways. */

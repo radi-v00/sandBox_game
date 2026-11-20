@@ -73,14 +73,17 @@ export class GameSession {
     if (!result.ok) return { ok: false, reason: result.reason };
 
     const need = requiredShelf(req.kind, req.row, req.col);
-    const shelf = shelves.shelf(need.orientation, need.index);
-    if (shelf.phase !== "open") {
-      const label = need.orientation === "horizontal" ? `Row ${need.index + 1}` : `Column ${need.index + 1}`;
-      return { ok: false, reason: `${GATE_LABELS[req.kind]} needs the ${label} shelf fully pulled out.` };
+    const shelf = shelves.shelf(need.orientation, need.row, need.col);
+    if (!shelf.isPulled) {
+      const label =
+        need.orientation === "horizontal"
+          ? "horizontal shelf at box (" + (need.row + 1) + ", " + (need.col + 1) + ")"
+          : "vertical shelf between (" + (need.row + 1) + ", " + (need.col + 1) + ") and (" + (need.row + 1) + ", " + (need.col + 2) + ")";
+      return { ok: false, reason: GATE_LABELS[req.kind] + " needs the " + label + " fully pulled out." };
     }
 
-    const fresh = result.outcome.newConcrete.filter((c) => !this.concreteBoxes.has(`${c.row},${c.col}`));
-    fresh.forEach((c) => this.concreteBoxes.add(`${c.row},${c.col}`));
+    const fresh = result.outcome.newConcrete.filter((c) => !this.concreteBoxes.has(c.row + "," + c.col));
+    fresh.forEach((c) => this.concreteBoxes.add(c.row + "," + c.col));
     const penalty = 10 * fresh.length;
 
     this.world = result.world;

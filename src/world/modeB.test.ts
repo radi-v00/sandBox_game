@@ -107,8 +107,8 @@ describe("concrete penalty in a session", () => {
   it("charges each concrete box once, separately from the action cost", () => {
     const session = new GameSession(B([["fullSand"], ["fullSand"], ["fullWater"]]));
     const shelves = new ShelfManager(3, 1);
-    shelves.pull("horizontal", 0);
-    shelves.pull("horizontal", 1);
+    shelves.pull("horizontal", 0, 0);
+    shelves.pull("horizontal", 1, 0);
     shelves.update(SHELF_ANIMATION_MS);
 
     expect(session.apply({ kind: "topDown", row: 1, col: 0 }, shelves).ok).toBe(true);
@@ -125,7 +125,7 @@ describe("concrete penalty in a session", () => {
   it("reset clears the concrete boxes and the penalty", () => {
     const session = new GameSession(B([["fullSand"], ["fullWater"]]));
     const shelves = new ShelfManager(2, 1);
-    shelves.pull("horizontal", 0);
+    shelves.pull("horizontal", 0, 0);
     shelves.update(SHELF_ANIMATION_MS);
     session.apply(A00, shelves);
     session.reset();
@@ -145,9 +145,7 @@ describe("Mode B solver", () => {
     expect(finalKinds.some((k) => k === "fullSand" || k === "halfSand")).toBe(false);
   });
 
-  it("prefers the container route over forming concrete when that is strictly cheaper", () => {
-    // half sand over water. Container route: water out (5), half sand down (3), half sand out (3) = 11.
-    // Concrete route: half sand onto water = 3 + penalty 10 = 13. So 11 wins, with no concrete.
+  it("prefers the container route over forming concrete when that is cheaper", () => {
     const r = solve(B([["halfSand"], ["fullWater"]]));
     expect(r.found).toBe(true);
     expect(r.totalCost).toBe(11);
@@ -156,7 +154,6 @@ describe("Mode B solver", () => {
   });
 
   it("reports failure when a sand box is sealed in by concrete", () => {
-    // The only box below the sand is concrete, and there is no side neighbour.
     const r = solve(B([["fullSand"], ["concrete"]]));
     expect(r.found).toBe(false);
     expect(r.reason.length).toBeGreaterThan(0);
