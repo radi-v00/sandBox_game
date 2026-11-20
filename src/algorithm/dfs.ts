@@ -1,7 +1,16 @@
-import { hash, isGoal, successors, SearchResult, SearchState, Action } from "./common";
+import {
+  hash,
+  isGoal,
+  successors,
+  SearchResult,
+  SearchState,
+  Action,
+} from "./common";
 
 export function dfs(init: SearchState, maxExpansions = 200_000): SearchResult {
-  const stack: { s: SearchState; path: Action[]; g: number }[] = [{ s: init, path: [], g: 0 }];
+  const stack: { s: SearchState; path: Action[]; g: number }[] = [
+    { s: init, path: [], g: 0 },
+  ];
   const seen = new Set<string>();
   let expanded = 0;
 
@@ -12,9 +21,10 @@ export function dfs(init: SearchState, maxExpansions = 200_000): SearchResult {
     seen.add(h);
     expanded++;
     if (isGoal(s)) return { found: true, path, totalCost: g, expanded };
+
     const children = successors(s);
     for (let i = children.length - 1; i >= 0; i--) {
-      const c = children[i];
+      const c = children[i]!;
       if (!seen.has(hash(c.state))) {
         stack.push({ s: c.state, path: [...path, c.action], g: g + c.cost });
       }

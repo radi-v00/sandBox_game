@@ -154,61 +154,40 @@ function topDown(world: World, row: number, col: number): TransitionResult {
 }
 
 function sideGate(world: World, row: number, col: number): TransitionResult {
-  const targetCol = sideTargetCol(col, world.cols);
-  if (targetCol === null)
-    return fail(`Box ${name(row, col)} has no neighbour for the side gate.`);
+  if (col < 0 || col + 1 >= world.cols)
+    return fail(`No side gate at box ${name(row, col)}.`);
 
-  const source = world.getBox(row, col);
-  if (!isMovable(source))
-    return fail(`Box ${name(row, col)} is concrete and cannot be moved.`);
+  const left = world.getBox(row, col);
+  const right = world.getBox(row, col + 1);
 
-  const material = materialOf(source);
-  const sourceValue = boxValue(source);
-  const target = world.getBox(row, targetCol);
-  const targetMaterial = materialOf(target);
-  const next = world.clone();
-  const newConcrete: Coord[] = [];
-  let moved = 0;
-
-  if (material === "water") {
-    if (WATER_USES_SIDE_GATE)
-      throw new Error("Side gate for water is not implemented.");
-  } else if (material === "sand" && target !== "concrete") {
-    if (targetMaterial === "water") {
-      moved = sideContactAmount(sourceValue);
-      if (moved > 0) {
-        next.setBox(row, col, kindOf("sand", sourceValue - moved));
-        next.setBox(row, targetCol, "concrete");
-        newConcrete.push({ row, col: targetCol });
-      }
-    } else {
-      const targetValue = boxValue(target);
-      moved = sideTransferAmount(sourceValue, targetValue);
-      if (moved > 0) {
-        next.setBox(row, col, kindOf("sand", sourceValue - moved));
-        next.setBox(row, targetCol, kindOf("sand", targetValue + moved));
-      }
-    }
+  let sourceCol: number;
+  if (left === "fullSand" && right === "empty") {
+    sourceCol = col;
+  } else if (left === "empty" && right === "fullSand") {
+    sourceCol = col + 1;
+  } else {
+    return fail(
+      `Side gate ${name(row, col)} needs one full-sand side and one empty side.`,
+    );
   }
+
+  const targetCol = sourceCol === col ? col + 1 : col;
+  const next = world.clone();
+  next.setBox(row, sourceCol, "halfSand");
+  next.setBox(row, targetCol, "halfSand");
 
   return {
     ok: true,
     world: next,
     outcome: {
-      sBefore: sourceValue,
+      sBefore: 1,
       sAfter: null,
       cost: CostModel.sideGateCost(),
-      moved,
+      moved: 0.5,
       removed: 0,
-      newConcrete,
-      concretePenalty: CostModel.concretePenalty(newConcrete.length),
-      description: describe(
-        row,
-        col,
-        moved,
-        `box ${name(row, targetCol)}`,
-        newConcrete,
-      ),
+      newConcrete: [],
+      concretePenalty: 0,
+      description: `Side gate ${name(row, col)} moved 0.5 from ${name(row, sourceCol)} to ${name(row, targetCol)}.`,
     },
   };
 }
