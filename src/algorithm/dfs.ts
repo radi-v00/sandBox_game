@@ -12,7 +12,6 @@ export function dfs(init: SearchState, maxExpansions = 200_000): SearchResult {
     seen.add(h);
     expanded++;
     if (isGoal(s)) return { found: true, path, totalCost: g, expanded };
-
     const children = successors(s);
     for (let i = children.length - 1; i >= 0; i--) {
       const c = children[i];
@@ -21,6 +20,5 @@ export function dfs(init: SearchState, maxExpansions = 200_000): SearchResult {
       }
     }
   }
-
   return { found: false, path: [], totalCost: 0, expanded };
 }

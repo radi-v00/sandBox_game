@@ -1,14 +1,14 @@
 import { World } from "../world/world";
-import { boxValue } from "../world/box";
+import { boxValue, materialOf } from "../world/box";
 import { applyGate } from "../world/transitions";
 
 export type Action =
-  | { kind: "topDown"; row: number; col: number }
-  | { kind: "side";    row: number; col: number };
+  | { kind: "topDown";  row: number; col: number }
+  | { kind: "sideGate"; row: number; col: number };
 
 export interface SearchState {
   world: World;
-  openShelves: Set<string>;   // "topDown:r:c"
+  openShelves: Set<string>; // "topDown:r:c"
 }
 
 export interface Child { state: SearchState; action: Action; cost: number }
@@ -20,19 +20,17 @@ export interface SearchResult {
   expanded: number;
 }
 
-const SIDE_SHARE = 0.5;
-const EPSILON = 1e-9;
-
 // ---------- hash ----------
+// toKinds() keeps water (value 1) and fullSand (value 1) distinct.
 export function hash(s: SearchState): string {
-  const w = JSON.stringify(s.world.toMatrix());
+  const w = JSON.stringify(s.world.toKinds());
   const o = [...s.openShelves].sort().join(",");
   return `${w}|${o}`;
 }
 
 // ---------- goal ----------
 export function isGoal(s: SearchState): boolean {
-  return s.world.toMatrix().every(row => row.every(b => b.kind !== "sand"));
+  return s.world.isGoalState(); // no sand; water/concrete allowed
 }
 
 // ---------- initial ----------
@@ -40,103 +38,84 @@ export function initialFrom(world: World): SearchState {
   return { world: world.clone(), openShelves: new Set() };
 }
 
-// ---------- feasibility (Q3) ----------
+// ---------- feasibility ----------
 export function isTopDownFeasible(s: SearchState, r: number, c: number): boolean {
   if (s.openShelves.has(`topDown:${r}:${c}`)) return false;
+  const kind = s.world.getBox(r, c);
+  return kind !== "concrete" && kind !== "empty";
+}
+
+export function isSideGateFeasible(s: SearchState, r: number, c: number): boolean {
   const src = s.world.getBox(r, c);
-  if (src.kind === "empty" || src.kind === "concrete") return false;
+  if (materialOf(src) !== "sand") return false;    // applyGate throws on water
+  if (c + 1 >= s.world.cols) return false;         // no right neighbour
+  if (s.world.getBox(r, c + 1) === "concrete") return false;
   return true;
 }
 
-export function isSideFeasible(s: SearchState, r: number, c: number): boolean {
-  if (c === 0 || c === s.world.cols - 1) return false;        // Q2: no edge gates
-  const src = s.world.getBox(r, c);
-  if (src.kind === "empty" || src.kind === "concrete") return false;
+// ---------- transition ----------
+export function step(s: SearchState, action: Action): Child | null {
+  // ---- side gate ----
+  if (action.kind === "sideGate") {
+    const res = applyGate(s.world, { kind: "sideGate", row: action.row, col: action.col });
+    if (!res.ok) return null;
+    if (res.outcome.moved === 0 && res.outcome.newConcrete.length === 0) return null;
 
-  const left  = s.world.getBox(r, c - 1);
-  const right = s.world.getBox(r, c + 1);
-  const emptyCount = (left.kind === "empty" ? 1 : 0) + (right.kind === "empty" ? 1 : 0);
-  if (emptyCount === 0) return false;
-  return src.value + EPSILON >= SIDE_SHARE * emptyCount;      // 1/2 each
-}
-
-// ---------- defensive wrapper over applyGate ----------
-function applyTopDown(w: World, row: number, col: number) {
-  const res = applyGate(w, { kind: "topDown", row, col }) as any;
-  const world: World = res && res.next ? res.next : w;
-  const outcome = res && res.outcome
-    ? res.outcome
-    : { moved: 0, sBefore: 0, sAfter: 0, cost: 0, concretePenalty: 0 };
-  return { world, outcome };
-}
-
-// ---------- single transition ----------
-export function step(s: SearchState, action: Action): Child {
-  // ============ SIDE GATE ============
-  if (action.kind === "side") {
-    const w = s.world.clone();
     const open = new Set(s.openShelves);
-    const { row, col } = action;
-    const src   = w.getBox(row, col);
-    const left  = w.getBox(row, col - 1);
-    const right = w.getBox(row, col + 1);
-    const empties = [left, right].filter(b => b.kind === "empty");
-
-    for (const nb of empties) { nb.kind = src.kind; nb.value = SIDE_SHARE; }
-    src.value -= SIDE_SHARE * empties.length;
-    if (src.value <= EPSILON) { src.kind = "empty"; src.value = 0; }
-
-    // maintain invariant: no open shelf sits above an empty box
     for (const k of [...open]) {
       const [, rs, cs] = k.split(":");
-      if (w.getBox(+rs, +cs).kind === "empty") open.delete(k);
+      if (res.world.getBox(+rs, +cs) === "empty") open.delete(k);
     }
-    return { state: { world: w, openShelves: open }, action, cost: 1 };
+    return {
+      state: { world: res.world, openShelves: open },
+      action,
+      cost: 1 + res.outcome.concretePenalty,
+    };
   }
 
-  // ============ TOP-DOWN SHELF ============
+  // ---- top-down with cascade + reconciliation ----
   let w = s.world.clone();
   const open = new Set(s.openShelves);
-  const { row, col } = action;
-  const key = `topDown:${row}:${col}`;
-  const sBefore = boxValue(w.getBox(row, col));
+  const key = `topDown:${action.row}:${action.col}`;
+  const sBefore = boxValue(w.getBox(action.row, action.col));
   open.add(key);
 
   let concretePenalty = 0;
 
-  // immediate transfer
-  {
-    const { world, outcome } = applyTopDown(w, row, col);
-    w = world;
-    concretePenalty += outcome.concretePenalty ?? 0;
-  }
-  if (w.getBox(row, col).kind === "empty") open.delete(key);
+  const first = applyGate(w, { kind: "topDown", row: action.row, col: action.col });
+  if (!first.ok) return null;
+  w = first.world;
+  concretePenalty += first.outcome.concretePenalty;
+  if (w.getBox(action.row, action.col) === "empty") open.delete(key);
 
-  // cascade to fixpoint
   const maxPasses = w.rows * w.cols + 1;
   for (let pass = 0; pass < maxPasses; pass++) {
     let changed = false;
     for (const k of [...open]) {
       const [, rs, cs] = k.split(":");
       const rr = +rs, cc = +cs;
-      if (w.getBox(rr, cc).kind === "empty") { open.delete(k); continue; }
-
-      const { world, outcome } = applyTopDown(w, rr, cc);
-      if (outcome.moved > 0) {
-        w = world;
-        concretePenalty += outcome.concretePenalty ?? 0;
+      const kind = w.getBox(rr, cc);
+      if (kind === "empty")     { open.delete(k); continue; }
+      if (kind === "concrete")  { continue; }
+      const res = applyGate(w, { kind: "topDown", row: rr, col: cc });
+      if (res.ok && res.outcome.moved > 0) {
+        w = res.world;
+        concretePenalty += res.outcome.concretePenalty;
         changed = true;
       }
-      if (w.getBox(rr, cc).kind === "empty") open.delete(k);
+      if (w.getBox(rr, cc) === "empty") open.delete(k);
     }
     if (!changed) break;
   }
 
-  // RECONCILE - s' is the final box after cascade + auto-close
-  const sAfter = boxValue(w.getBox(row, col));
+  // Reconcile: s' is the box value AFTER cascade + auto-close.
+  const sAfter = boxValue(w.getBox(action.row, action.col));
   const actionCost = 1 + 4 * (sBefore + sAfter);
-
-  return { state: { world: w, openShelves: open }, action, cost: actionCost + concretePenalty };
+  return {
+    state: { world: w, openShelves: open },
+    action,
+    cost: actionCost + concretePenalty,
+  };
 }
 
 // ---------- successors ----------
@@ -144,14 +123,20 @@ export function successors(s: SearchState): Child[] {
   const out: Child[] = [];
   for (let r = 0; r < s.world.rows; r++) {
     for (let c = 0; c < s.world.cols; c++) {
-      if (isTopDownFeasible(s, r, c)) out.push(step(s, { kind: "topDown", row: r, col: c }));
-      if (isSideFeasible(s, r, c))    out.push(step(s, { kind: "side",    row: r, col: c }));
+      if (isTopDownFeasible(s, r, c)) {
+        const ch = step(s, { kind: "topDown", row: r, col: c });
+        if (ch) out.push(ch);
+      }
+      if (isSideGateFeasible(s, r, c)) {
+        const ch = step(s, { kind: "sideGate", row: r, col: c });
+        if (ch) out.push(ch);
+      }
     }
   }
   return out;
 }
 
-// ---------- MinHeap (used by ucs / astar) ----------
+// ---------- MinHeap (unchanged from existing file) ----------
 export class MinHeap<T> {
   private a: T[] = [];
   constructor(private less: (x: T, y: T) => boolean) {}

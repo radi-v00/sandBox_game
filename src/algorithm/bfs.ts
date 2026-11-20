@@ -9,14 +9,12 @@ export function bfs(init: SearchState, maxExpansions = 200_000): SearchResult {
     const { s, path, g } = q.shift()!;
     expanded++;
     if (isGoal(s)) return { found: true, path, totalCost: g, expanded };
-
     for (const c of successors(s)) {
-      const ch = hash(c.state);
-      if (seen.has(ch)) continue;
-      seen.add(ch);
+      const h = hash(c.state);
+      if (seen.has(h)) continue;
+      seen.add(h);
       q.push({ s: c.state, path: [...path, c.action], g: g + c.cost });
     }
   }
-
   return { found: false, path: [], totalCost: 0, expanded };
 }
