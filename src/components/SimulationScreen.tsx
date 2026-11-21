@@ -4,6 +4,7 @@ import { World as WorldClass } from "../world/world";
 import type { BoxKind } from "../world/box";
 import { ShelfManager, type ShelfPolicies } from "../shelves/shelfManager";
 import type { Orientation } from "../shelves/shelf";
+import { checkReturn } from "../shelves/returnPolicy";
 import { GameSession } from "../game/session";
 import type { GateKind } from "../rules/assumptions";
 import { applyGate } from "../world/transitions";
@@ -72,6 +73,22 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
           manager.update(dt * speed);
           changed = true;
         }
+
+        // Auto-return: any shelf that is fully open and passes its policy's
+        // return check closes itself. A shelf whose box above is clean has no
+        // reason to stay open -- nothing can fall through it -- so it must return.
+        const currentWorld = session.world;
+        for (const s of manager.horizontal) {
+          if (s.phase !== "open") continue;
+          if (!checkReturn("horizontal", s.row, s.col, manager.policies.horizontal, currentWorld).allowed) continue;
+          if (manager.requestReturn("horizontal", s.row, s.col, currentWorld).ok) changed = true;
+        }
+        for (const s of manager.vertical) {
+          if (s.phase !== "open") continue;
+          if (!checkReturn("vertical", s.row, s.col, manager.policies.vertical, currentWorld).allowed) continue;
+          if (manager.requestReturn("vertical", s.row, s.col, currentWorld).ok) changed = true;
+        }
+
         if (useParticles) {
           acc += dt * speed;
           while (acc >= STEP_MS) {
@@ -85,13 +102,13 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [manager, engine, paused, speed, useParticles]);
+  }, [manager, engine, paused, speed, useParticles, session]);
 
   const paint = (row: number, col: number) => {
     if (brush === null) return;
     try {
       session.paint(row, col, brush);
-      say(`Painted ${brush} at (${row + 1}, ${col + 1}). History cleared.`, "info");
+      say("Painted " + brush + " at (" + (row + 1) + ", " + (col + 1) + "). History cleared.", "info");
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), "error");
     }
@@ -107,7 +124,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     manager.reset();
     engine.reset();
     setBrush(null);
-    say(`Randomized board (seed ${seed}).`, "info");
+    say("Randomized board (seed " + seed + ").", "info");
     bump();
   };
 
@@ -142,14 +159,14 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
       actionReason = result.reason;
       say(actionReason, result.ok ? "success" : "error");
     } else {
-      actionReason = `${pulled.reason} Nothing moved in that box.`;
+      actionReason = pulled.reason + " Nothing moved in that box.";
       say(actionReason, "info");
     }
 
     // 3) Gravity cascade: any box with an open shelf must drain.
     const cascadeMoves = session.settle(manager);
     if (cascadeMoves.length > 0) {
-      say(`${actionReason} Cascaded ${cascadeMoves.length} extra step(s).`, "success");
+      say(actionReason + " Cascaded " + cascadeMoves.length + " extra step(s).", "success");
     }
 
     // 4) Particle animation - only when there was no cascade, so the pour
@@ -225,7 +242,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
         </div>
         <div className="stat">
           <div className="stat-label">Goal</div>
-          <div className={`stat-value ${goal ? "is-success" : "is-danger"}`}>
+          <div className={"stat-value " + (goal ? "is-success" : "is-danger")}>
             {goal ? "Reached" : "In progress"}
           </div>
         </div>
@@ -270,6 +287,9 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
 
         <div className="card">
           <div className="card-title">Shelves \u00b7 pull to act</div>
+          <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "0 0 8px" }}>
+            Shelves close themselves when their box above is clear.
+          </p>
           <ShelfControls manager={manager} version={version} onPull={pull} onReturn={giveBack} />
         </div>
       </div>
@@ -281,7 +301,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
           {brushes.map((b) => (
             <button
               key={b.label}
-              className={`btn btn-sm ${brush === b.kind ? "is-active" : ""}`}
+              className={"btn btn-sm " + (brush === b.kind ? "is-active" : "")}
               onClick={() => setBrush(b.kind)}
             >
               {b.label}
@@ -303,7 +323,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
 
       {message && (
         <div
-          className={`message ${msgKind === "error" ? "is-error" : msgKind === "success" ? "is-success" : ""}`}
+          className={"message " + (msgKind === "error" ? "is-error" : msgKind === "success" ? "is-success" : "")}
           style={{ marginTop: 12 }}
         >
           {message}
