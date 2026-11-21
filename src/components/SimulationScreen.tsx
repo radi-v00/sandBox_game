@@ -196,38 +196,44 @@ export function SimulationScreen({
       return;
     }
 
-    // 2) Does the gate actually do anything on THIS box?
+    // 2) A pull is an action: it ALWAYS runs the gate and ALWAYS pays the
+    //    cost — even when the box below is full, the source is empty, or the
+    //    target is concrete. Only a structurally invalid gate is refused.
     const check = applyGate(session.world, { kind, row: r, col: c });
-    const sourceKindBefore = session.world.getBox(r, c);
-    let actionHappened = false;
-    let actionReason = "";
-
     if (!check.ok) {
-      actionReason = check.reason;
-      say(actionReason, "error");
-    } else if (check.outcome.moved > 0) {
-      const result = session.apply({ kind, row: r, col: c }, manager);
-      actionHappened = result.ok;
-      actionReason = result.reason;
-      say(actionReason, result.ok ? "success" : "error");
-    } else {
-      actionReason = pulled.reason + " Nothing moved in that box.";
-      say(actionReason, "info");
+      say(check.reason, "error");
+      bump();
+      return;
     }
 
-    // 3) Gravity cascade: any box with an open shelf must drain.
+    const sourceKindBefore = session.world.getBox(r, c);
+    const result = session.apply({ kind, row: r, col: c }, manager);
+
+    // 3) Gravity cascade: any open shelf below drains its box.
     const cascadeMoves = session.settle(manager);
-    if (cascadeMoves.length > 0) {
-      say(
-        actionReason + " Cascaded " + cascadeMoves.length + " extra step(s).",
-        "success",
-      );
+
+    // 4) If the cascade refilled the box we just pulled, recompute this
+    //    action's cost from the settled state. The cost formula is based on
+    //    what the player observes: full box before, full box after → cost 9.
+    if (result.ok && cascadeMoves.length > 0) {
+      session.recomputeLastAction(r, c);
     }
 
-    // 4) Particle animation - only when there was no cascade, so the pour
-    //    lands exactly on the settled state instead of being cut short.
+    // 5) Report using the final (possibly recomputed) cost.
+    const recorded = session.history.at(-1);
+    const finalCost = recorded?.cost ?? check.outcome.cost;
+    const finalPenalty =
+      recorded?.concretePenalty ?? check.outcome.concretePenalty;
+    let msg = `${result.reason} Cost ${finalCost}${finalPenalty > 0 ? ` (+${finalPenalty} concrete)` : ""}.`;
+    if (cascadeMoves.length > 0) {
+      msg += ` Cascaded ${cascadeMoves.length} extra step(s).`;
+    }
+
+    // 6) Particle animation — only when a real move happened with no cascade,
+    //    so the pour lands exactly on the settled state.
     if (
-      actionHappened &&
+      result.ok &&
+      check.outcome.moved > 0 &&
       useParticles &&
       !preview &&
       cascadeMoves.length === 0
@@ -255,6 +261,7 @@ export function SimulationScreen({
       }
     }
 
+    say(msg, result.ok ? "success" : "error");
     bump();
   };
 

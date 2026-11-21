@@ -49,10 +49,20 @@ export type TransitionResult =
 const fail = (reason: string): TransitionResult => ({ ok: false, reason });
 const name = (row: number, col: number) => `(${row + 1}, ${col + 1})`;
 
-function describe(row: number, col: number, moved: number, where: string, newConcrete: Coord[]): string {
+function describe(
+  row: number,
+  col: number,
+  moved: number,
+  where: string,
+  newConcrete: Coord[],
+): string {
   const base =
-    moved === 0 ? `Nothing moved from box ${name(row, col)}.` : `Moved ${moved} from box ${name(row, col)} to ${where}.`;
-  const concrete = newConcrete.map((c) => ` Box ${name(c.row, c.col)} became concrete.`).join("");
+    moved === 0
+      ? `Nothing moved from box ${name(row, col)}.`
+      : `Moved ${moved} from box ${name(row, col)} to ${where}.`;
+  const concrete = newConcrete
+    .map((c) => ` Box ${name(c.row, c.col)} became concrete.`)
+    .join("");
   return base + concrete;
 }
 
@@ -62,15 +72,25 @@ function describe(row: number, col: number, moved: number, where: string, newCon
  */
 export function applyGate(world: World, req: GateRequest): TransitionResult {
   const { row, col } = req;
-  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= world.rows || col < 0 || col >= world.cols) {
+  if (
+    !Number.isInteger(row) ||
+    !Number.isInteger(col) ||
+    row < 0 ||
+    row >= world.rows ||
+    col < 0 ||
+    col >= world.cols
+  ) {
     return fail(`Box (${row}, ${col}) is out of bounds.`);
   }
-  return req.kind === "topDown" ? topDown(world, row, col) : sideGate(world, row, col);
+  return req.kind === "topDown"
+    ? topDown(world, row, col)
+    : sideGate(world, row, col);
 }
 
 function topDown(world: World, row: number, col: number): TransitionResult {
   const upper = world.getBox(row, col);
-  if (!isMovable(upper)) return fail(`Box ${name(row, col)} is concrete and cannot be flushed.`);
+  if (!isMovable(upper))
+    return fail(`Box ${name(row, col)} is concrete and cannot be flushed.`);
 
   const sBefore = boxValue(upper);
   const material = materialOf(upper);
@@ -104,7 +124,11 @@ function topDown(world: World, row: number, col: number): TransitionResult {
         moved = transferAmount(sBefore, lowerValue);
         if (moved > 0) {
           next.setBox(row, col, kindOf(material, sBefore - moved));
-          next.setBox(target.row, target.col, kindOf(material, lowerValue + moved));
+          next.setBox(
+            target.row,
+            target.col,
+            kindOf(material, lowerValue + moved),
+          );
         }
       }
     }
@@ -112,6 +136,7 @@ function topDown(world: World, row: number, col: number): TransitionResult {
 
   // s' is measured on the executed result, not predicted.
   const sAfter = boxValue(next.getBox(row, col));
+  console.log(sAfter);
   return {
     ok: true,
     world: next,
@@ -130,10 +155,12 @@ function topDown(world: World, row: number, col: number): TransitionResult {
 
 function sideGate(world: World, row: number, col: number): TransitionResult {
   const targetCol = sideTargetCol(col, world.cols);
-  if (targetCol === null) return fail(`Box ${name(row, col)} has no neighbour for the side gate.`);
+  if (targetCol === null)
+    return fail(`Box ${name(row, col)} has no neighbour for the side gate.`);
 
   const source = world.getBox(row, col);
-  if (!isMovable(source)) return fail(`Box ${name(row, col)} is concrete and cannot be moved.`);
+  if (!isMovable(source))
+    return fail(`Box ${name(row, col)} is concrete and cannot be moved.`);
 
   const material = materialOf(source);
   const sourceValue = boxValue(source);
@@ -144,7 +171,8 @@ function sideGate(world: World, row: number, col: number): TransitionResult {
   let moved = 0;
 
   if (material === "water") {
-    if (WATER_USES_SIDE_GATE) throw new Error("Side gate for water is not implemented.");
+    if (WATER_USES_SIDE_GATE)
+      throw new Error("Side gate for water is not implemented.");
   } else if (material === "sand" && target !== "concrete") {
     if (targetMaterial === "water") {
       moved = sideContactAmount(sourceValue);
@@ -174,7 +202,13 @@ function sideGate(world: World, row: number, col: number): TransitionResult {
       removed: 0,
       newConcrete,
       concretePenalty: CostModel.concretePenalty(newConcrete.length),
-      description: describe(row, col, moved, `box ${name(row, targetCol)}`, newConcrete),
+      description: describe(
+        row,
+        col,
+        moved,
+        `box ${name(row, targetCol)}`,
+        newConcrete,
+      ),
     },
   };
 }

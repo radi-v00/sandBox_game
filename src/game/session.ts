@@ -1,7 +1,12 @@
 import { requiredShelf, type GateKind } from "../rules/assumptions";
 import type { ShelfManager } from "../shelves/shelfManager";
-import type { BoxKind } from "../world/box";
-import { applyGate, type ActionOutcome, type GateRequest } from "../world/transitions";
+import { boxValue, type BoxKind } from "../world/box";
+import { CostModel } from "../planning/costModel";
+import {
+  applyGate,
+  type ActionOutcome,
+  type GateRequest,
+} from "../world/transitions";
 import type { World } from "../world/world";
 
 export interface HistoryEntry extends ActionOutcome {
@@ -37,7 +42,6 @@ export class GameSession {
   history: HistoryEntry[] = [];
   actionCostTotal = 0;
   penaltyTotal = 0;
-  /** Boxes that became concrete during play. Each is charged once. */
   readonly concreteBoxes = new Set<string>();
   private initial: World;
 
@@ -69,7 +73,6 @@ export class GameSession {
     this.clearProgress();
   }
 
-  /** Runs one gate operation. It counts as exactly one action, whatever the animation length. */
   apply(req: GateRequest, shelves: ShelfManager): ApplyResult {
     const result = applyGate(this.world, req);
     if (!result.ok) return { ok: false, reason: result.reason };
@@ -81,10 +84,15 @@ export class GameSession {
         need.orientation === "horizontal"
           ? `horizontal shelf at box (${need.row + 1}, ${need.col + 1})`
           : `vertical shelf between (${need.row + 1}, ${need.col + 1}) and (${need.row + 1}, ${need.col + 2})`;
-      return { ok: false, reason: `${GATE_LABELS[req.kind]} needs the ${label} fully pulled out.` };
+      return {
+        ok: false,
+        reason: `${GATE_LABELS[req.kind]} needs the ${label} fully pulled out.`,
+      };
     }
 
-    const fresh = result.outcome.newConcrete.filter((c) => !this.concreteBoxes.has(`${c.row},${c.col}`));
+    const fresh = result.outcome.newConcrete.filter(
+      (c) => !this.concreteBoxes.has(`${c.row},${c.col}`),
+    );
     fresh.forEach((c) => this.concreteBoxes.add(`${c.row},${c.col}`));
     const penalty = 10 * fresh.length;
 
@@ -104,16 +112,29 @@ export class GameSession {
   }
 
   /**
-   * Gravity cascade. Any box whose horizontal shelf is open cannot hold material, so its
-   * content must fall into the box below (or the container). If that box's shelf is also
-   * open, material passes through and continues until it rests on a closed shelf or the
-   * container. Repeats until the whole board is settled.
-   *
-   * Cascade moves are free: no action cost is charged. Concrete penalties still apply,
-   * because a sand/water contact is a real outcome of the fall.
-   *
-   * Returns the list of cascade moves for optional animation. The world is left settled.
+   * After settle() runs, the pulled box may have been refilled from above.
+   * The cost formula 1 + 4(s + s') is based on what the player observes:
+   * the box's value before and after the whole turn. If a cascade changed
+   * the pulled box, recompute this action's s' and cost from the settled
+   * state and add the delta to actionCostTotal. Side gates are flat 1 and
+   * are never recomputed.
    */
+  recomputeLastAction(row: number, col: number): void {
+    const last = this.history[this.history.length - 1];
+    if (!last) return;
+    if (last.kind !== "topDown") return;
+    if (last.row !== row || last.col !== col) return;
+    const finalValue = boxValue(this.world.getBox(row, col));
+    if (finalValue === last.sAfter) return;
+    const newCost = CostModel.topDownCost(last.sBefore, finalValue);
+    const delta = newCost - last.cost;
+    if (delta === 0) return;
+    last.sAfter = finalValue;
+    last.cost = newCost;
+    last.runningTotal += delta;
+    this.actionCostTotal += delta;
+  }
+
   settle(shelves: ShelfManager): CascadeMove[] {
     const moves: CascadeMove[] = [];
     const maxPasses = this.world.rows * this.world.cols + 1;
@@ -125,15 +146,26 @@ export class GameSession {
           const kind = this.world.getBox(r, c);
           if (kind === "empty" || kind === "concrete") continue;
 
-          const result = applyGate(this.world, { kind: "topDown", row: r, col: c });
+          const result = applyGate(this.world, {
+            kind: "topDown",
+            row: r,
+            col: c,
+          });
           if (!result.ok || result.outcome.moved === 0) continue;
 
-          const fresh = result.outcome.newConcrete.filter((cc) => !this.concreteBoxes.has(`${cc.row},${cc.col}`));
+          const fresh = result.outcome.newConcrete.filter(
+            (cc) => !this.concreteBoxes.has(`${cc.row},${cc.col}`),
+          );
           fresh.forEach((cc) => this.concreteBoxes.add(`${cc.row},${cc.col}`));
           this.penaltyTotal += 10 * fresh.length;
 
           this.world = result.world;
-          moves.push({ row: r, col: c, kindBefore: kind, outcome: result.outcome });
+          moves.push({
+            row: r,
+            col: c,
+            kindBefore: kind,
+            outcome: result.outcome,
+          });
           changedThisPass = true;
         }
       }
