@@ -91,7 +91,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     if (brush === null) return;
     try {
       session.paint(row, col, brush);
-      say("Painted " + brush + " at (" + (row + 1) + ", " + (col + 1) + "). History cleared.", "info");
+      say(`Painted ${brush} at (${row + 1}, ${col + 1}). History cleared.`, "info");
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), "error");
     }
@@ -107,7 +107,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     manager.reset();
     engine.reset();
     setBrush(null);
-    say("Randomized board (seed " + seed + ").", "info");
+    say(`Randomized board (seed ${seed}).`, "info");
     bump();
   };
 
@@ -123,35 +123,46 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
     if (preview) { say("Close the preview before acting.", "error"); return; }
     const kind: GateKind = o === "horizontal" ? "topDown" : "sideGate";
 
-    // 1) Would the gate actually do anything?
-    const check = applyGate(session.world, { kind, row: r, col: c });
-    if (!check.ok) { say(check.reason, "error"); return; }
-    if (check.outcome.moved === 0) {
-      say(check.outcome.description || "Nothing would move.", "info");
-      return;
-    }
-
-    // 2) Open the shelf (this is what makes session.apply accept the action).
+    // 1) Open the shelf.
     const pulled = manager.pull(o, r, c);
     if (!pulled.ok) { say(pulled.reason, "error"); bump(); return; }
 
-    // 3) Run the gate: one action, cost = action cost + concrete penalty.
+    // 2) Does the gate actually do anything on THIS box?
+    const check = applyGate(session.world, { kind, row: r, col: c });
     const sourceKindBefore = session.world.getBox(r, c);
-    const result = session.apply({ kind, row: r, col: c }, manager);
-    say(result.reason, result.ok ? "success" : "error");
+    let actionHappened = false;
+    let actionReason = "";
 
-    // 4) Particle playback.
-    if (result.ok && useParticles && !preview) {
-      const id = particleOf(sourceKindBefore);
+    if (!check.ok) {
+      actionReason = check.reason;
+      say(actionReason, "error");
+    } else if (check.outcome.moved > 0) {
+      const result = session.apply({ kind, row: r, col: c }, manager);
+      actionHappened = result.ok;
+      actionReason = result.reason;
+      say(actionReason, result.ok ? "success" : "error");
+    } else {
+      actionReason = `${pulled.reason} Nothing moved in that box.`;
+      say(actionReason, "info");
+    }
+
+    // 3) Gravity cascade: any box with an open shelf must drain.
+    const cascadeMoves = session.settle(manager);
+    if (cascadeMoves.length > 0) {
+      say(`${actionReason} Cascaded ${cascadeMoves.length} extra step(s).`, "success");
+    }
+
+    // 4) Particle animation - only when there was no cascade, so the pour
+    //    lands exactly on the settled state instead of being cut short.
+    if (actionHappened && useParticles && !preview && cascadeMoves.length === 0) {
       const afterKind = session.world.getBox(r, c);
+      const id = particleOf(sourceKindBefore);
       const movedParticles =
         particleCount(sourceKindBefore, engine.particlesPerBox) -
         particleCount(afterKind, engine.particlesPerBox);
       const target =
         kind === "topDown"
-          ? r + 1 < session.world.rows
-            ? { row: r + 1, col: c }
-            : null
+          ? r + 1 < session.world.rows ? { row: r + 1, col: c } : null
           : { row: r, col: c + 1 };
       const concreteFormed = session.history.at(-1)?.newConcrete.length ?? 0;
       if (concreteFormed === 0 && id !== 0 && movedParticles > 0) {
@@ -159,6 +170,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
         skipNextLoad.current = true;
       }
     }
+
     bump();
   };
 
@@ -213,7 +225,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
         </div>
         <div className="stat">
           <div className="stat-label">Goal</div>
-          <div className={"stat-value " + (goal ? "is-success" : "is-danger")}>
+          <div className={`stat-value ${goal ? "is-success" : "is-danger"}`}>
             {goal ? "Reached" : "In progress"}
           </div>
         </div>
@@ -269,7 +281,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
           {brushes.map((b) => (
             <button
               key={b.label}
-              className={"btn btn-sm " + (brush === b.kind ? "is-active" : "")}
+              className={`btn btn-sm ${brush === b.kind ? "is-active" : ""}`}
               onClick={() => setBrush(b.kind)}
             >
               {b.label}
@@ -291,7 +303,7 @@ export function SimulationScreen({ initial, policies, onLoadExample, onBack }: P
 
       {message && (
         <div
-          className={"message " + (msgKind === "error" ? "is-error" : msgKind === "success" ? "is-success" : "")}
+          className={`message ${msgKind === "error" ? "is-error" : msgKind === "success" ? "is-success" : ""}`}
           style={{ marginTop: 12 }}
         >
           {message}
