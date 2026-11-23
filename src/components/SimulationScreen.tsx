@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { World } from "../world/world";
 import { World as WorldClass } from "../world/world";
-import type { BoxKind } from "../world/box";
+import { materialOf, type BoxKind } from "../world/box";
 import { ShelfManager, type ShelfPolicies } from "../shelves/shelfManager";
 import type { Orientation } from "../shelves/shelf";
 import { checkReturn } from "../shelves/returnPolicy";
@@ -89,9 +89,13 @@ export function SimulationScreen({
         // Auto-return: any shelf that is fully open and passes its policy's
         // return check closes itself. A shelf whose box above is clean has no
         // reason to stay open -- nothing can fall through it -- so it must return.
+        // Auto-return: any shelf that is fully open and whose OWN box is empty closes
+        // itself, provided the policy still allows it. If the shelf's box still holds
+        // material it is kept open, so a subsequent pull below can cascade through it.
         const currentWorld = session.world;
         for (const s of manager.horizontal) {
           if (s.phase !== "open") continue;
+          if (materialOf(currentWorld.getBox(s.row, s.col)) !== null) continue; // NEW
           if (
             !checkReturn(
               "horizontal",
@@ -105,6 +109,22 @@ export function SimulationScreen({
           if (
             manager.requestReturn("horizontal", s.row, s.col, currentWorld).ok
           )
+            changed = true;
+        }
+        for (const s of manager.vertical) {
+          if (s.phase !== "open") continue;
+          if (materialOf(currentWorld.getBox(s.row, s.col)) !== null) continue; // NEW (see note)
+          if (
+            !checkReturn(
+              "vertical",
+              s.row,
+              s.col,
+              manager.policies.vertical,
+              currentWorld,
+            ).allowed
+          )
+            continue;
+          if (manager.requestReturn("vertical", s.row, s.col, currentWorld).ok)
             changed = true;
         }
         for (const s of manager.vertical) {
