@@ -1,0 +1,10 @@
+export * from "./types";
+export * from "./config";
+export * from "./random";
+export * from "./simulate";
+export * from "./fitness";
+export * from "./operators";
+export * from "./selection";
+export * from "./ga";
+export { buildGADependencies } from "./world-deps";
+export type { GARequest, GAResponse } from "./ga.worker";

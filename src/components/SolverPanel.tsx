@@ -10,10 +10,11 @@ import { bfs }   from "../algorithm/bfs";
 import { dfs }   from "../algorithm/dfs";
 import { ucs as ucsAlgo } from "../algorithm/ucs";
 import { astar } from "../algorithm/astar";
+import type { GARequest, GAResponse, GARunResult } from "../algorithm/genetic";
 
 type Status = "idle" | "running" | "done" | "error";
 
-type AlgoKey = "worker-ucs" | "dummy" | "bfs" | "dfs" | "algo-ucs" | "astar";
+type AlgoKey = "worker-ucs" | "dummy" | "bfs" | "dfs" | "algo-ucs" | "astar" | "ga";
 
 const ALGO_LABELS: Record<AlgoKey, string> = {
   "worker-ucs": "UCS (worker, large boards)",
@@ -22,9 +23,12 @@ const ALGO_LABELS: Record<AlgoKey, string> = {
   "dfs":        "DFS (any solution)",
   "algo-ucs":   "UCS (in-process)",
   "astar":      "A* (h=0, = UCS)",
+  "ga":         "Genetic Algorithm",
 };
 
-const IN_PROCESS: Record<Exclude<AlgoKey, "worker-ucs">, (s: any) => SearchResult> = {
+type InProcKey = Exclude<AlgoKey, "worker-ucs" | "ga">;
+
+const IN_PROCESS: Record<InProcKey, (s: any) => SearchResult> = {
   "dummy": dummy, "bfs": bfs, "dfs": dfs, "algo-ucs": ucsAlgo, "astar": astar,
 };
 
@@ -42,14 +46,15 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
   const [step, setStep]     = useState(0);
   const [algo, setAlgo]     = useState<AlgoKey>("worker-ucs");
   const [comparison, setComparison] =
-    useState<Partial<Record<Exclude<AlgoKey, "worker-ucs">, SearchResult & { ms: number }>> | null>(null);
+    useState<Partial<Record<InProcKey, SearchResult & { ms: number }>> | null>(null);
+  const [gaHistory, setGaHistory] = useState<GARunResult["history"] | null>(null);
   const modeB = world.mode === "B";
 
   const stop = () => { workerRef.current?.terminate(); workerRef.current = null; };
 
   useEffect(() => {
     stop(); setStatus("idle"); setResult(null); setError(""); setStep(0);
-    setComparison(null); onPreview(null);
+    setComparison(null); setGaHistory(null); onPreview(null);
   }, [stateKey, onPreview]);
 
   useEffect(() => stop, []);
@@ -57,6 +62,7 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
   // ---------- run ----------
   const run = () => {
     setResult(null); setError(""); setStep(0); onPreview(null); setStatus("running");
+    setGaHistory(null);
 
     if (algo === "worker-ucs") {
       const worker = new Worker(new URL("../planning/solver.worker.ts", import.meta.url), { type: "module" });
@@ -68,6 +74,26 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
       };
       worker.onerror = (e) => { stop(); setError(e.message || "Worker failed"); setStatus("error"); };
       const request: SolveRequest = { kinds: world.toKinds(), mode: world.mode };
+      worker.postMessage(request);
+      return;
+    }
+
+    if (algo === "ga") {
+      const worker = new Worker(new URL("../algorithm/genetic/ga.worker.ts", import.meta.url), { type: "module" });
+      workerRef.current = worker;
+      worker.onmessage = (e: MessageEvent<GAResponse>) => {
+        stop();
+        if (e.data.type === "result") {
+          setResult(gaResultToSolveResult(world, e.data.result));
+          setGaHistory(e.data.result.history);
+          setStatus("done");
+        } else {
+          setError(e.data.message);
+          setStatus("error");
+        }
+      };
+      worker.onerror = (e) => { stop(); setError(e.message || "Worker failed"); setStatus("error"); };
+      const request: GARequest = { kinds: world.toKinds(), mode: world.mode };
       worker.postMessage(request);
       return;
     }
@@ -84,8 +110,8 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
   };
 
   const compareAll = () => {
-    const out: Partial<Record<Exclude<AlgoKey, "worker-ucs">, SearchResult & { ms: number }>> = {};
-    (Object.keys(IN_PROCESS) as (keyof typeof IN_PROCESS)[]).forEach((k) => {
+    const out: Partial<Record<InProcKey, SearchResult & { ms: number }>> = {};
+    (Object.keys(IN_PROCESS) as InProcKey[]).forEach((k) => {
       const init = initialFrom(world);
       const t0 = performance.now();
       try {
@@ -135,7 +161,7 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
         <button className="btn btn-primary" onClick={run} disabled={status === "running"}>
           {status === "running" ? "Solving..." : "Solve"}
         </button>
-        <button className="btn" onClick={compareAll} disabled={status === "running"}>
+        <button className="btn" onClick={compareAll} disabled={status === "running" || algo === "ga"}>
           Compare all (in-process)
         </button>
         {status === "running" && <button className="btn" onClick={cancel}>Cancel</button>}
@@ -183,6 +209,34 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
         </div>
       )}
 
+      {gaHistory && gaHistory.length > 0 && (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13 }}>
+            GA generation history ({gaHistory.length} generations)
+          </summary>
+          <table className="data-table" style={{ marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th>Gen</th><th>Best fitness</th><th>Avg fitness</th>
+                <th>Best conflict</th><th>Best path cost</th><th>Solved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gaHistory.map((g) => (
+                <tr key={g.generation}>
+                  <td>{g.generation}</td>
+                  <td>{g.bestFitness.toFixed(2)}</td>
+                  <td>{g.avgFitness.toFixed(2)}</td>
+                  <td>{g.bestConflict}</td>
+                  <td>{g.bestPathCost}</td>
+                  <td>{g.solved ? "Y" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
+
       {comparison && (
         <table className="data-table" style={{ marginTop: 12 }}>
           <thead>
@@ -192,11 +246,11 @@ export function SolverPanel({ world, stateKey, onPreview }: Props) {
             </tr>
           </thead>
           <tbody>
-            {(Object.keys(comparison) as (keyof typeof comparison)[]).map((k) => {
+            {(Object.keys(comparison) as InProcKey[]).map((k) => {
               const r = comparison[k]!;
               return (
                 <tr key={k}>
-                  <td>{ALGO_LABELS[k as AlgoKey]}</td>
+                  <td>{ALGO_LABELS[k]}</td>
                   <td>{r.found ? "Y" : "N"}</td>
                   <td>{r.found ? r.totalCost : "-"}</td>
                   <td>{r.expanded}</td>
@@ -259,4 +313,20 @@ function algoResultToSolveResult(world: World, r: SearchResult): SolveResult {
     penaltyTotal,
     expanded: r.expanded,
   };
+}
+
+// ---------- adapter: GA run -> planning SolveResult ----------
+function gaResultToSolveResult(world: World, run: GARunResult): SolveResult {
+  const { best } = run;
+  const end =
+    best.result.goalStep !== null && best.result.goalStep >= 0
+      ? best.result.goalStep + 1
+      : best.sequence.length;
+
+  return algoResultToSolveResult(world, {
+    found: best.result.success,
+    path: best.sequence.slice(0, end),   // GateRequest[] is Action[]
+    totalCost: best.result.pathCost,     // unused by the adapter; recomputed anyway
+    expanded: run.generations,           // proxy metric: generations explored
+  });
 }

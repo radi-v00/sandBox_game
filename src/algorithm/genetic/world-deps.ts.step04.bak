@@ -1,0 +1,58 @@
+import type { World, GateRequest, TransitionResult } from "./types";
+import { sandLevel } from "./types";
+import { applyGate } from "../../world/transitions";
+import { CostModel } from "../../planning/costModel";
+import { sandBoxCount, concreteCount } from "../../world/stats";
+
+type ActionOutcomeShape = { concretePenalty?: number };
+
+function defaultStepCost(
+  world: World,
+  req: GateRequest,
+  result: TransitionResult,
+): number {
+  if (!result.ok) return 0;
+
+  let base: number;
+  if (req.kind === "sideGate") {
+    base = CostModel.sideGateCost();
+  } else {
+    const sBefore = sandLevel(world.getBox(req.row, req.col));
+    const destRow = req.row + 1;
+    const sAfter =
+      destRow < result.world.rows
+        ? sandLevel(result.world.getBox(destRow, req.col))
+        : 0;
+    base = CostModel.topDownCost(sBefore, sAfter);
+  }
+
+  const outcome = result.outcome as ActionOutcomeShape;
+  if (typeof outcome.concretePenalty === "number") {
+    return base + outcome.concretePenalty;
+  }
+
+  const diff = concreteCount(result.world) - concreteCount(world);
+  return base + (diff > 0 ? CostModel.concretePenalty(diff) : 0);
+}
+
+function buildActionPool(rows: number, cols: number): GateRequest[] {
+  const pool: GateRequest[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      pool.push({ kind: "topDown", row: r, col: c });
+      pool.push({ kind: "sideGate", row: r, col: c });
+    }
+  }
+  return pool;
+}
+
+export function buildGADependencies(initialWorld: World) {
+  return {
+    initialWorld,
+    applyGate,
+    isGoal: (w: World) => w.isGoalState(),
+    conflictNumber: (w: World) => sandBoxCount(w),
+    stepCost: defaultStepCost,
+    actionPool: buildActionPool(initialWorld.rows, initialWorld.cols),
+  };
+}
