@@ -10,7 +10,7 @@ export function simulateSequence(seq: Sequence, deps: GADependencies): Simulatio
   let minConflict = startGoal ? 0 : deps.conflictNumber(world);
 
   for (let i = 0; i < seq.length && !success; i++) {
-    const req = seq[i];
+    const req = seq[i]!;
     let res;
     try {
       res = deps.applyGate(world, req);

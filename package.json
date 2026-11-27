@@ -7,16 +7,20 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark:dry": "tsx src/algorithm/genetic/benchmark/cli.ts --count 5",
+    "benchmark": "tsx src/algorithm/genetic/benchmark/cli.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/node": "^26.6.11",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.4",
     "vite": "^5.4.2",
     "vitest": "^2.0.5"

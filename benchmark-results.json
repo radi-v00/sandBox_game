@@ -1,0 +1,224 @@
+{
+  "config": {
+    "count": 5,
+    "baseSeed": 1000,
+    "rows": 4,
+    "cols": 2,
+    "mode": "A",
+    "probabilities": {
+      "empty": 1,
+      "halfSand": 1,
+      "fullSand": 1
+    },
+    "gaSeedOffset": 1000,
+    "ucsMaxExpansions": 1000000,
+    "gaConfigOverrides": {}
+  },
+  "metrics": {
+    "totalProblems": 5,
+    "gaSuccesses": 0,
+    "gaSuccessRatePercent": 0,
+    "gaSuccessWithOptimum": 0,
+    "gaSuccessWithOptimumPercentOfGaSuccess": 0,
+    "gaSuccessWithOptimumPercentOfAll": 0,
+    "meanRatioOverMeasurable": null,
+    "measurableCount": 0,
+    "medianRatioOverMeasurable": null,
+    "meanRatioOverGaSolved": null,
+    "gaSolvedWithOptimumCount": 0,
+    "gaFailures": 5,
+    "ucsFailures": 0,
+    "bothFailed": 0,
+    "gaAvgMs": 881.3276999999998,
+    "ucsAvgMs": 784.2780999999999,
+    "totalGaMs": 4406.638499999999,
+    "totalUcsMs": 3921.3904999999995,
+    "minRatio": null,
+    "maxRatio": null,
+    "ratioBuckets": {
+      "equal": 0,
+      "upTo110": 0,
+      "upTo125": 0,
+      "upTo150": 0,
+      "upTo200": 0,
+      "over200": 0
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "seed": 1000,
+      "gaSeed": 2000,
+      "initialKinds": [
+        [
+          "fullSand",
+          "fullSand"
+        ],
+        [
+          "fullSand",
+          "fullSand"
+        ],
+        [
+          "empty",
+          "halfSand"
+        ],
+        [
+          "empty",
+          "empty"
+        ]
+      ],
+      "gaFound": false,
+      "gaCost": null,
+      "gaPathLength": 0,
+      "gaGenerations": 200,
+      "gaMs": 376.3944999999999,
+      "ucsFound": true,
+      "ucsCost": 76,
+      "ucsExpanded": 4605,
+      "ucsMs": 2441.2628999999997,
+      "ucsReason": "Goal reached.",
+      "ratio": null,
+      "ratioStatus": "ucs-only"
+    },
+    {
+      "index": 1,
+      "seed": 1001,
+      "gaSeed": 2001,
+      "initialKinds": [
+        [
+          "empty",
+          "empty"
+        ],
+        [
+          "empty",
+          "empty"
+        ],
+        [
+          "halfSand",
+          "fullSand"
+        ],
+        [
+          "halfSand",
+          "fullSand"
+        ]
+      ],
+      "gaFound": false,
+      "gaCost": null,
+      "gaPathLength": 0,
+      "gaGenerations": 200,
+      "gaMs": 539.3391000000001,
+      "ucsFound": true,
+      "ucsCost": 23,
+      "ucsExpanded": 50,
+      "ucsMs": 23.845200000000204,
+      "ucsReason": "Goal reached.",
+      "ratio": null,
+      "ratioStatus": "ucs-only"
+    },
+    {
+      "index": 2,
+      "seed": 1002,
+      "gaSeed": 2002,
+      "initialKinds": [
+        [
+          "halfSand",
+          "halfSand"
+        ],
+        [
+          "halfSand",
+          "halfSand"
+        ],
+        [
+          "halfSand",
+          "halfSand"
+        ],
+        [
+          "halfSand",
+          "empty"
+        ]
+      ],
+      "gaFound": false,
+      "gaCost": null,
+      "gaPathLength": 0,
+      "gaGenerations": 200,
+      "gaMs": 827.8471,
+      "ucsFound": true,
+      "ucsCost": 50,
+      "ucsExpanded": 1259,
+      "ucsMs": 652.9861999999998,
+      "ucsReason": "Goal reached.",
+      "ratio": null,
+      "ratioStatus": "ucs-only"
+    },
+    {
+      "index": 3,
+      "seed": 1003,
+      "gaSeed": 2003,
+      "initialKinds": [
+        [
+          "halfSand",
+          "empty"
+        ],
+        [
+          "fullSand",
+          "fullSand"
+        ],
+        [
+          "halfSand",
+          "fullSand"
+        ],
+        [
+          "halfSand",
+          "fullSand"
+        ]
+      ],
+      "gaFound": false,
+      "gaCost": null,
+      "gaPathLength": 0,
+      "gaGenerations": 200,
+      "gaMs": 1721.9367000000002,
+      "ucsFound": true,
+      "ucsCost": 65,
+      "ucsExpanded": 1365,
+      "ucsMs": 743.3126000000002,
+      "ucsReason": "Goal reached.",
+      "ratio": null,
+      "ratioStatus": "ucs-only"
+    },
+    {
+      "index": 4,
+      "seed": 1004,
+      "gaSeed": 2004,
+      "initialKinds": [
+        [
+          "empty",
+          "empty"
+        ],
+        [
+          "halfSand",
+          "halfSand"
+        ],
+        [
+          "halfSand",
+          "empty"
+        ],
+        [
+          "halfSand",
+          "halfSand"
+        ]
+      ],
+      "gaFound": false,
+      "gaCost": null,
+      "gaPathLength": 0,
+      "gaGenerations": 200,
+      "gaMs": 941.1210999999994,
+      "ucsFound": true,
+      "ucsCost": 27,
+      "ucsExpanded": 120,
+      "ucsMs": 59.98359999999957,
+      "ucsReason": "Goal reached.",
+      "ratio": null,
+      "ratioStatus": "ucs-only"
+    }
+  ]
+}

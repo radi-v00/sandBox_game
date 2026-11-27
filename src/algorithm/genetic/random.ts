@@ -15,5 +15,5 @@ export function randInt(rng: Rng, maxExclusive: number): number {
 }
 
 export function pick<T>(rng: Rng, arr: T[]): T {
-  return arr[randInt(rng, arr.length)];
+  return arr[randInt(rng, arr.length)]!;
 }

@@ -1,4 +1,11 @@
-import { type BoxKind, type Mode, assertAllowed, boxValue, hasSand, kindFromValue } from "./box";
+import {
+  type BoxKind,
+  type Mode,
+  assertAllowed,
+  boxValue,
+  hasSand,
+  kindFromValue,
+} from "./box";
 import { mulberry32 } from "./prng";
 
 export interface Probabilities {
@@ -23,8 +30,10 @@ export class World {
   private cells: BoxKind[];
 
   constructor(rows: number, cols: number, mode: Mode = "A") {
-    if (!Number.isInteger(rows) || rows < 1) throw new Error("rows must be an integer >= 1.");
-    if (!Number.isInteger(cols) || cols < 1) throw new Error("cols must be an integer >= 1.");
+    if (!Number.isInteger(rows) || rows < 1)
+      throw new Error("rows must be an integer >= 1.");
+    if (!Number.isInteger(cols) || cols < 1)
+      throw new Error("cols must be an integer >= 1.");
     this.rows = rows;
     this.cols = cols;
     this.mode = mode;
@@ -32,7 +41,14 @@ export class World {
   }
 
   private index(row: number, col: number): number {
-    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= this.rows || col < 0 || col >= this.cols) {
+    if (
+      !Number.isInteger(row) ||
+      !Number.isInteger(col) ||
+      row < 0 ||
+      row >= this.rows ||
+      col < 0 ||
+      col >= this.cols
+    ) {
       throw new Error(`Box (${row}, ${col}) is out of bounds.`);
     }
     return row * this.cols + col;
@@ -63,7 +79,8 @@ export class World {
     const matrix: number[][] = [];
     for (let r = 0; r < this.rows; r++) {
       const line: number[] = [];
-      for (let c = 0; c < this.cols; c++) line.push(boxValue(this.getBox(r, c)));
+      for (let c = 0; c < this.cols; c++)
+        line.push(boxValue(this.getBox(r, c)));
       matrix.push(line);
     }
     return matrix;
@@ -79,23 +96,31 @@ export class World {
     return kinds;
   }
 
-  static fromKinds(kinds: readonly (readonly BoxKind[])[], mode: Mode = "A"): World {
+  static fromKinds(
+    kinds: readonly (readonly BoxKind[])[],
+    mode: Mode = "A",
+  ): World {
     const rows = kinds.length;
     const cols = kinds[0]?.length ?? 0;
     const world = new World(rows, cols, mode);
     kinds.forEach((line, r) => {
-      if (line.length !== cols) throw new Error("Rows must all have the same length.");
+      if (line.length !== cols)
+        throw new Error("Rows must all have the same length.");
       line.forEach((kind, c) => world.setBox(r, c, kind));
     });
     return world;
   }
 
-  static fromMatrix(matrix: readonly (readonly number[])[], mode: Mode = "A"): World {
+  static fromMatrix(
+    matrix: readonly (readonly number[])[],
+    mode: Mode = "A",
+  ): World {
     const rows = matrix.length;
     const cols = matrix[0]?.length ?? 0;
     const world = new World(rows, cols, mode);
     matrix.forEach((line, r) => {
-      if (line.length !== cols) throw new Error("Matrix rows must all have the same length.");
+      if (line.length !== cols)
+        throw new Error("Matrix rows must all have the same length.");
       line.forEach((value, c) => world.setBox(r, c, kindFromValue(value)));
     });
     return world;
@@ -106,9 +131,16 @@ export class World {
   }
 
   /** Seeded random world. Never generates concrete; generates water only in Mode B. */
-  static random(rows: number, cols: number, mode: Mode, seed: number, probs: Probabilities): World {
+  static random(
+    rows: number,
+    cols: number,
+    mode: Mode,
+    seed: number,
+    probs: Probabilities,
+  ): World {
     const water = probs.fullWater ?? 0;
-    if (mode === "A" && water > 0) throw new Error("Water is not allowed in Mode A.");
+    if (mode === "A" && water > 0)
+      throw new Error("Water is not allowed in Mode A.");
 
     const choices: { kind: BoxKind; weight: number }[] = [
       { kind: "empty", weight: probs.empty },
@@ -120,7 +152,8 @@ export class World {
       throw new Error("Probabilities must be finite and non-negative.");
     }
     const total = choices.reduce((sum, c) => sum + c.weight, 0);
-    if (total <= 0) throw new Error("At least one probability must be greater than 0.");
+    if (total <= 0)
+      throw new Error("At least one probability must be greater than 0.");
     const fallback = [...choices].reverse().find((c) => c.weight > 0)!.kind;
 
     const rng = mulberry32(seed);
@@ -143,3 +176,5 @@ export class World {
     return world;
   }
 }
+
+export { BoxKind, Mode };

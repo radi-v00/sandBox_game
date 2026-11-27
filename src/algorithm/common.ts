@@ -1,5 +1,5 @@
 import { World } from "../world/world";
-import { boxValue, materialOf } from "../world/box";
+import { boxValue } from "../world/box";
 import { applyGate } from "../world/transitions";
 
 export type Action =
@@ -198,7 +198,11 @@ export class MinHeap<T> {
       const p = (i - 1) >> 1;
       const child = this.a[i];
       const parent = this.a[p];
-      if (child !== undefined && parent !== undefined && this.less(child, parent)) {
+      if (
+        child !== undefined &&
+        parent !== undefined &&
+        this.less(child, parent)
+      ) {
         [this.a[i], this.a[p]] = [parent, child];
         i = p;
       } else break;
@@ -218,10 +222,22 @@ export class MinHeap<T> {
         let m = i;
         const left = this.a[l];
         const current = this.a[m];
-        if (l < n && left !== undefined && current !== undefined && this.less(left, current)) m = l;
+        if (
+          l < n &&
+          left !== undefined &&
+          current !== undefined &&
+          this.less(left, current)
+        )
+          m = l;
         const right = this.a[r];
         const smallest = this.a[m];
-        if (r < n && right !== undefined && smallest !== undefined && this.less(right, smallest)) m = r;
+        if (
+          r < n &&
+          right !== undefined &&
+          smallest !== undefined &&
+          this.less(right, smallest)
+        )
+          m = r;
         if (m === i) break;
         const tmp = this.a[i]!;
         this.a[i] = this.a[m]!;

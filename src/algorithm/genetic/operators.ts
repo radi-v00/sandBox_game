@@ -38,11 +38,19 @@ export function mutate(
 
   for (let k = 0; k < edits; k++) {
     if (rng() < 0.5) {
-      child[randInt(rng, child.length)] = pick(rng, actionPool);
+      const replacement = pick(rng, actionPool);
+      if (replacement) {
+        child[randInt(rng, child.length)] = replacement;
+      }
     } else {
       const i = randInt(rng, child.length);
       const j = randInt(rng, child.length);
-      [child[i], child[j]] = [child[j], child[i]];
+      const a = child[i];
+      const b = child[j];
+      if (a !== undefined && b !== undefined) {
+        child[i] = b;
+        child[j] = a;
+      }
     }
   }
   return child;
